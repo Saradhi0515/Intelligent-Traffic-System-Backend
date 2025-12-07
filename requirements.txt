@@ -1,0 +1,10 @@
+flask
+flask-cors
+gunicorn
+ultralytics
+easyocr
+opencv-python-headless
+numpy
+scipy
+pandas
+werkzeug
