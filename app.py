@@ -237,19 +237,6 @@ def upload_accident():
     base, ext = os.path.splitext(filename)
     ext_no_dot = ext[1:].lower() if ext.startswith('.') else ext.lower()
 
-    if ext_no_dot in ALLOWED_VIDEO_EXTS:
-        # Save uploaded video
-        input_video_path = os.path.join(ACCIDENT_DIR, filename)
-        f.save(input_video_path)
-
-        # Define output path
-        output_filename = f"processed_{base}.mp4"
-        output_video_path = os.path.join(ACCIDENT_RESULTS_DIR, output_filename)
-
-        # Start Async Job
-        job_id = str(uuid.uuid4())
-        JOBS[job_id] = {'status': 'queued', 'type': 'accident'}
-
         accident_script = os.path.join(BASE_DIR, 'Accident-Detection', 'accident_detector.py')
         cmd = [
             sys.executable, 
