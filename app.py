@@ -17,6 +17,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEOS_DIR = os.path.join(BASE_DIR, 'Data', 'ANPR-ATCC')
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
+ACCIDENT_DIR = os.path.join(BASE_DIR, 'Data', 'Accident-Detection')
+os.makedirs(ACCIDENT_DIR, exist_ok=True)
+ACCIDENT_RESULTS_DIR = os.path.join(ACCIDENT_DIR, 'Results')
+os.makedirs(ACCIDENT_RESULTS_DIR, exist_ok=True)
+
 ALLOWED_VIDEO_EXTS = {"mp4", "mov", "avi", "mkv", "webm"}
 ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
 
@@ -154,10 +159,72 @@ def upload_anpr_atcc():
 
     return jsonify({"error": "Only images or videos are allowed"}), 400
 
+@app.route("/api/accident/upload", methods=["POST"])
+@app.route("/accident/", methods=["POST"])
+def upload_accident():
+    if "file" not in request.files:
+        return jsonify({"error": "No file field"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    filename = secure_filename(f.filename)
+    base, ext = os.path.splitext(filename)
+    ext_no_dot = ext[1:].lower() if ext.startswith('.') else ext.lower()
+
+    if ext_no_dot in ALLOWED_VIDEO_EXTS:
+        # Save uploaded video
+        input_video_path = os.path.join(ACCIDENT_DIR, filename)
+        f.save(input_video_path)
+
+        # Define output path
+        output_filename = f"processed_{base}.mp4"
+        output_video_path = os.path.join(ACCIDENT_RESULTS_DIR, output_filename)
+
+        # Run accident detection
+        try:
+            accident_script = os.path.join(BASE_DIR, 'Accident-Detection', 'accident_detector.py')
+            # Using same python executable
+            cmd = [
+                sys.executable, 
+                accident_script, 
+                '--video', input_video_path,
+                '--output', output_video_path,
+                '--conf', '0.5' 
+            ]
+            print(f"Running command: {' '.join(cmd)}")
+            res = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            
+            if res.returncode != 0:
+                print(f"Error stdout: {res.stdout}")
+                print(f"Error stderr: {res.stderr}")
+                return jsonify({"error": "Accident detection failed", "details": res.stderr}), 500
+
+            if not os.path.isfile(output_video_path):
+                 return jsonify({"error": "Output video not generated"}), 500
+
+            # Return relative URL
+            processed_url = f"/media/accident/Results/{output_filename}"
+            return jsonify({"processedUrl": processed_url}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    return jsonify({"error": "Only videos are supported for accident detection currently"}), 400
+
 # Serve files from the desired folder
 @app.route("/media/anpr-atcc/<path:filename>", methods=["GET", "OPTIONS"])
 def serve_anpr_atcc(filename):
     response = send_from_directory(VIDEOS_DIR, filename)
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "ngrok-skip-browser-warning, Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    return response
+
+@app.route("/media/accident/<path:filename>", methods=["GET", "OPTIONS"])
+def serve_accident(filename):
+    response = send_from_directory(ACCIDENT_DIR, filename)
     response.headers.add("Access-Control-Allow-Origin", "*")
     response.headers.add("Access-Control-Allow-Headers", "ngrok-skip-browser-warning, Content-Type, Authorization")
     response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
