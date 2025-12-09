@@ -16,7 +16,7 @@ class Tracker:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         req_dir = os.path.join(base_dir, 'Models')
         self.device = 0 if torch.cuda.is_available() else 'cpu'
-        self.vehicle_detection_model = YOLO(os.path.join(req_dir, "yolov8x.pt"))
+        self.vehicle_detection_model = YOLO("yolov8n.pt") # Using Nano model for Render free tier support
         self.license_plate_detector = YOLO(os.path.join(req_dir, "License-Plate.pt"))
         try:
             # move models to GPU when available
