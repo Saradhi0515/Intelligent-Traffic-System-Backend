@@ -6,19 +6,6 @@ import shutil
 import subprocess
 import sys
 import importlib
-import threading
-import uuid
-import time
-
-app = Flask(__name__)
-# Allow broad CORS during development to avoid "Failed to fetch" due to origin/preflight issues
-CORS(app, resources={r"/*": {"origins": "*"}})
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB uploads
-
-# Absolute target directory under backend/Data/ANPR-ATCC
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VIDEOS_DIR = os.path.join(BASE_DIR, 'Data', 'ANPR-ATCC')
-os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 ACCIDENT_DIR = os.path.join(BASE_DIR, 'Data', 'Accident-Detection')
 os.makedirs(ACCIDENT_DIR, exist_ok=True)
