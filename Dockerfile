@@ -22,6 +22,9 @@ RUN mkdir -p Data/ANPR-ATCC/Results/Interpolated_Results
 RUN mkdir -p Data/Accident-Detection/Results
 RUN mkdir -p Models
 
+# Create the user with UID 1000
+RUN useradd -m -u 1000 user
+
 # Set permissions for the non-root user (ID 1000) used by HF Spaces
 RUN chown -R 1000:1000 /app
 
