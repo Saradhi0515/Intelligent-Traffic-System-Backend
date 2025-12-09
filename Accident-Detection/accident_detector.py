@@ -42,8 +42,8 @@ def detect_accident(video_path, model_path=None, output_path=None, conf_threshol
     # Video Writer setup
     out = None
     if output_path:
-        # Use avc1 codec for H.264 (better browser support)
-        fourcc = cv2.VideoWriter_fourcc(*'avc1') 
+        # Use vp80 codec for WebM (better compatibility with openCV headless)
+        fourcc = cv2.VideoWriter_fourcc(*'vp80') 
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         print(f"Writer opened: {out.isOpened()}")
         if not out.isOpened():
