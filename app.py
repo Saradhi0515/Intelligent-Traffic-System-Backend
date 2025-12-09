@@ -6,6 +6,9 @@ import shutil
 import subprocess
 import sys
 import importlib
+import threading
+import uuid
+import time
 
 app = Flask(__name__)
 # Allow broad CORS during development to avoid "Failed to fetch" due to origin/preflight issues
@@ -24,6 +27,79 @@ os.makedirs(ACCIDENT_RESULTS_DIR, exist_ok=True)
 
 ALLOWED_VIDEO_EXTS = {"mp4", "mov", "avi", "mkv", "webm"}
 ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
+
+# In-memory job store
+JOBS = {}
+
+def run_anpr_pipeline(job_id, anpr_dir):
+    try:
+        JOBS[job_id]['status'] = 'processing'
+        
+        # Step 1: main.py
+        res1 = subprocess.run([sys.executable, 'main.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
+        if res1.returncode != 0:
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = f"main.py failed: {res1.stderr}"
+            return
+
+        # Step 2: add_missing_data.py
+        res2 = subprocess.run([sys.executable, 'add_missing_data.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
+        if res2.returncode != 0:
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = f"add_missing_data.py failed: {res2.stderr}"
+            return
+
+        # Step 3: visualize.py
+        res3 = subprocess.run([sys.executable, 'visualize.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
+        if res3.returncode != 0:
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = f"visualize.py failed: {res3.stderr}"
+            return
+
+        # Success
+        output_annotated_path = os.path.join(VIDEOS_DIR, 'Results', 'output_annotated.webm')
+        if not os.path.isfile(output_annotated_path):
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = "Output video not found"
+            return
+
+        JOBS[job_id]['status'] = 'completed'
+        JOBS[job_id]['result_url'] = "/media/anpr-atcc/Results/output_annotated.webm"
+
+    except Exception as e:
+        JOBS[job_id]['status'] = 'failed'
+        JOBS[job_id]['error'] = str(e)
+
+def run_accident_pipeline(job_id, cmd, output_video_path, output_filename):
+    try:
+        JOBS[job_id]['status'] = 'processing'
+        print(f"Running command: {' '.join(cmd)}")
+        
+        res = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        
+        if res.returncode != 0:
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = f"Accident detection failed: {res.stderr}"
+            return
+
+        if not os.path.isfile(output_video_path):
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = "Output video not generated"
+            return
+
+        JOBS[job_id]['status'] = 'completed'
+        JOBS[job_id]['result_url'] = f"/media/accident/Results/{output_filename}"
+
+    except Exception as e:
+        JOBS[job_id]['status'] = 'failed'
+        JOBS[job_id]['error'] = str(e)
+
+@app.route("/api/status/<job_id>", methods=["GET"])
+def get_status(job_id):
+    job = JOBS.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
 
 @app.route("/api/anpr-atcc/health", methods=["GET"])
 def health_anpr_atcc():
@@ -117,31 +193,15 @@ def upload_anpr_atcc():
         if os.path.abspath(temp_upload_path) != os.path.abspath(fixed_video_path):
             shutil.copyfile(temp_upload_path, fixed_video_path)
         
-        # Automatically run analysis pipeline
-        try:
-            anpr_dir = os.path.join(os.path.dirname(__file__), 'ANPR-ATCC')
-            # Step 1: main.py (vehicle tracking/plate detection)
-            res1 = subprocess.run([sys.executable, 'main.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
-            if res1.returncode != 0:
-                return jsonify({"error": f"main.py failed", "stdout": res1.stdout, "stderr": res1.stderr}), 500
-            # Step 2: add_missing_data.py (interpolate/missing data)
-            res2 = subprocess.run([sys.executable, 'add_missing_data.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
-            if res2.returncode != 0:
-                return jsonify({"error": f"add_missing_data.py failed", "stdout": res2.stdout, "stderr": res2.stderr}), 500
-            # Step 3: visualize.py (render annotated output)
-            res3 = subprocess.run([sys.executable, 'visualize.py'], cwd=anpr_dir, check=False, capture_output=True, text=True)
-            if res3.returncode != 0:
-                return jsonify({"error": f"visualize.py failed", "stdout": res3.stdout, "stderr": res3.stderr}), 500
-        except subprocess.CalledProcessError as e:
-            return jsonify({"error": f"Analysis pipeline failed: {e}"}), 500
+        # Start Async Job
+        job_id = str(uuid.uuid4())
+        JOBS[job_id] = {'status': 'queued', 'type': 'anpr'}
+        
+        anpr_dir = os.path.join(os.path.dirname(__file__), 'ANPR-ATCC')
+        thread = threading.Thread(target=run_anpr_pipeline, args=(job_id, anpr_dir))
+        thread.start()
 
-        # Return the actual annotated output produced by visualize.py
-        output_annotated_path = os.path.join(VIDEOS_DIR, 'Results', 'output_annotated.webm')
-        if not os.path.isfile(output_annotated_path):
-            return jsonify({"error": "Annotated output not found after pipeline", "path": output_annotated_path}), 500
-        # Return relative URL so frontend can prepend API_BASE_URL
-        annotated_url = "/media/anpr-atcc/Results/output_annotated.webm"
-        return jsonify({"processedUrl": annotated_url}), 200
+        return jsonify({"jobId": job_id, "status": "queued"}), 202
 
     # Image flow: save as anpr_atcc.jpg regardless of source extension
     if ext_no_dot in ALLOWED_IMAGE_EXTS:
@@ -182,34 +242,23 @@ def upload_accident():
         output_filename = f"processed_{base}.mp4"
         output_video_path = os.path.join(ACCIDENT_RESULTS_DIR, output_filename)
 
-        # Run accident detection
-        try:
-            accident_script = os.path.join(BASE_DIR, 'Accident-Detection', 'accident_detector.py')
-            # Using same python executable
-            cmd = [
-                sys.executable, 
-                accident_script, 
-                '--video', input_video_path,
-                '--output', output_video_path,
-                '--conf', '0.5' 
-            ]
-            print(f"Running command: {' '.join(cmd)}")
-            res = subprocess.run(cmd, check=False, capture_output=True, text=True)
-            
-            if res.returncode != 0:
-                print(f"Error stdout: {res.stdout}")
-                print(f"Error stderr: {res.stderr}")
-                return jsonify({"error": "Accident detection failed", "details": res.stderr}), 500
+        # Start Async Job
+        job_id = str(uuid.uuid4())
+        JOBS[job_id] = {'status': 'queued', 'type': 'accident'}
 
-            if not os.path.isfile(output_video_path):
-                 return jsonify({"error": "Output video not generated"}), 500
+        accident_script = os.path.join(BASE_DIR, 'Accident-Detection', 'accident_detector.py')
+        cmd = [
+            sys.executable, 
+            accident_script, 
+            '--video', input_video_path,
+            '--output', output_video_path,
+            '--conf', '0.5' 
+        ]
+        
+        thread = threading.Thread(target=run_accident_pipeline, args=(job_id, cmd, output_video_path, output_filename))
+        thread.start()
 
-            # Return relative URL
-            processed_url = f"/media/accident/Results/{output_filename}"
-            return jsonify({"processedUrl": processed_url}), 200
-
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        return jsonify({"jobId": job_id, "status": "queued"}), 202
 
     return jsonify({"error": "Only videos are supported for accident detection currently"}), 400
 
