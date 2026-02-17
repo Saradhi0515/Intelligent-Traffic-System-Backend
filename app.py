@@ -27,7 +27,12 @@ os.makedirs(VIDEOS_DIR, exist_ok=True)
 ACCIDENT_DIR = os.path.join(BASE_DIR, 'Data', 'Accident-Detection')
 os.makedirs(ACCIDENT_DIR, exist_ok=True)
 ACCIDENT_RESULTS_DIR = os.path.join(ACCIDENT_DIR, 'Results')
+ACCIDENT_RESULTS_DIR = os.path.join(ACCIDENT_DIR, 'Results')
 os.makedirs(ACCIDENT_RESULTS_DIR, exist_ok=True)
+
+SIGNAL_DIR = os.path.join(BASE_DIR, 'Signal-Control')
+SIGNAL_RESULTS_DIR = os.path.join(SIGNAL_DIR, 'Results') # Or just use SIGNAL_DIR if simpler
+os.makedirs(SIGNAL_RESULTS_DIR, exist_ok=True)
 
 ALLOWED_VIDEO_EXTS = {"mp4", "mov", "avi", "mkv", "webm"}
 ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
@@ -265,6 +270,105 @@ def upload_accident():
         return jsonify({"jobId": job_id, "status": "queued"}), 202
 
     return jsonify({"error": "Only videos are supported for accident detection currently"}), 400
+
+def run_signal_pipeline(job_id, cmd, output_path, output_filename):
+    try:
+        JOBS[job_id]['status'] = 'processing'
+        print(f"Running signal command: {' '.join(cmd)}")
+        
+        # Signal control script might need to be run from its directory to find images
+        cwd = os.path.dirname(cmd[1])
+        
+        res = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True, text=True)
+        
+        if res.returncode != 0:
+            # It might exit with non-zero if sys.exit() is called, but let's check output
+            print(f"Signal script output: {res.stdout}")
+            print(f"Signal script error: {res.stderr}")
+            # If output file exists, we might consider it success
+        
+        if not os.path.isfile(output_path):
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = "Output video not generated"
+            return
+
+        JOBS[job_id]['status'] = 'completed'
+        JOBS[job_id]['result_url'] = f"/media/signal/{output_filename}"
+
+    except Exception as e:
+        JOBS[job_id]['status'] = 'failed'
+        JOBS[job_id]['error'] = str(e)
+
+@app.route("/api/signal/sample", methods=["POST"])
+def signal_sample():
+    job_id = str(uuid.uuid4())
+    JOBS[job_id] = {'status': 'queued', 'type': 'signal_sample'}
+    
+    output_filename = f"simulation_{job_id}.mp4"
+    output_path = os.path.join(SIGNAL_RESULTS_DIR, output_filename)
+    
+    script_path = os.path.join(SIGNAL_DIR, 'signalcontrol.py')
+    
+    cmd = [
+        sys.executable,
+        script_path,
+        '--headless',
+        '--output', output_path
+    ]
+    
+    thread = threading.Thread(target=run_signal_pipeline, args=(job_id, cmd, output_path, output_filename))
+    thread.start()
+    
+    return jsonify({"jobId": job_id, "status": "queued"}), 202
+
+@app.route("/api/signal/upload", methods=["POST"])
+def signal_upload():
+    if "files" not in request.files:
+        return jsonify({"error": "No files field"}), 400
+    
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No files uploaded"}), 400
+
+    job_id = str(uuid.uuid4())
+    JOBS[job_id] = {'status': 'queued', 'type': 'signal_detection'}
+    
+    video_paths = []
+    for f in files:
+        if f.filename:
+            filename = secure_filename(f.filename)
+            save_path = os.path.join(SIGNAL_RESULTS_DIR, f"{job_id}_{filename}")
+            f.save(save_path)
+            video_paths.append(save_path)
+            
+    if len(video_paths) < 2:
+        return jsonify({"error": "Please upload at least 2 videos for detection mode"}), 400
+
+    output_filename = f"detection_{job_id}.mp4"
+    output_path = os.path.join(SIGNAL_RESULTS_DIR, output_filename)
+    
+    script_path = os.path.join(SIGNAL_DIR, 'signalcontrol.py')
+    
+    cmd = [
+        sys.executable,
+        script_path,
+        '--headless',
+        '--output', output_path,
+        '--videos'
+    ] + video_paths
+    
+    thread = threading.Thread(target=run_signal_pipeline, args=(job_id, cmd, output_path, output_filename))
+    thread.start()
+    
+    return jsonify({"jobId": job_id, "status": "queued"}), 202
+
+@app.route("/media/signal/<path:filename>", methods=["GET", "OPTIONS"])
+def serve_signal(filename):
+    response = send_from_directory(SIGNAL_RESULTS_DIR, filename)
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "ngrok-skip-browser-warning, Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    return response
 
 # Serve files from the desired folder
 @app.route("/media/anpr-atcc/<path:filename>", methods=["GET", "OPTIONS"])

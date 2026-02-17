@@ -1,6 +1,45 @@
-/Models/Model_Training
 
-/.venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv
+venv/
+ENV/
+env/
+
+# Large Media Files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wmv
+
+# Directories
+/Models/Model_Training
 /Emergency-Vehicle
-/Signal-Control
-/ANPR-ATCC/__pycache__
+/Data/ANPR-ATCC/Results/
+/Data/Accident-Detection/Results/
+/Signal-Control/Results/
+/Signal-Control/images/

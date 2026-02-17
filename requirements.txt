@@ -9,3 +9,4 @@ scipy
 pandas
 werkzeug
 lapx
+pygame
