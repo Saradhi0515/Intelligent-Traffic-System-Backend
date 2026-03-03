@@ -556,7 +556,7 @@ if __name__ == '__main__':
         fourcc_det = cv2.VideoWriter_fourcc(*'vp80')
         os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
         out_det = cv2.VideoWriter(args.output, fourcc_det, 20.0, (1280, 960))
-        maxFramesDet = 600
+        maxFramesDet = 200 # Process 10 seconds worth of frames for POC speed
         frameCountDet = 0
 
         # Initialize signals in thread to avoid blocking
@@ -574,8 +574,14 @@ if __name__ == '__main__':
         # Map videos to lanes (assuming order: right, down, left, up)
         # If fewer videos than signals, we cycle or just use what we have
         
+        # Track previous frames to avoid running YOLO on every frame
+        skip_frames = 5
+        last_results = [None] * len(caps)
+        
         while True:
             frames = []
+            is_detect_frame = (frameCountDet % skip_frames == 0)
+            
             for i, cap in enumerate(caps):
                 ret, frame = cap.read()
                 if not ret:
@@ -585,8 +591,12 @@ if __name__ == '__main__':
                 # Resize for display/processing if needed
                 frame = cv2.resize(frame, (640, 480))
                 
-                # Detect
-                counts, plot_frame = detector.detect(frame)
+                # Detect every Nth frame
+                if is_detect_frame or last_results[i] is None:
+                    counts, plot_frame = detector.detect(frame)
+                    last_results[i] = (counts, plot_frame)
+                else:
+                    counts, plot_frame = last_results[i]
                 
                 # Update global vehicle counts for the corresponding lane
                 # Mapping logic needs to be robust. For now, simple 1-to-1 mapping
