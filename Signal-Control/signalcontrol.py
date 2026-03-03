@@ -436,7 +436,7 @@ def simulationTime():
             os._exit(1)
     
 
-class Main:
+def Main(args):
     thread4 = threading.Thread(name="simulationTime",target=simulationTime, args=()) 
     thread4.daemon = True
     thread4.start()
@@ -472,7 +472,7 @@ class Main:
 
     # Video Recording Setup
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    output_file = args.output if 'args' in globals() else 'simulation_output.mp4'
+    output_file = getattr(args, 'output', 'simulation_output.mp4')
     out = cv2.VideoWriter(output_file, fourcc, 20.0, (screenWidth, screenHeight))
     frameCount = 0
     maxFrames = 600 # Record for about 30 seconds (20 fps * 30)
@@ -551,8 +551,18 @@ if __name__ == '__main__':
 
     if len(args.videos) > 1:
         print("Starting Detection Mode with", len(args.videos), "videos")
-        # Initialize signals
-        initialize()
+        
+        # Initialize video writer for detection mode
+        fourcc_det = cv2.VideoWriter_fourcc(*'mp4v')
+        os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
+        out_det = cv2.VideoWriter(args.output, fourcc_det, 20.0, (1280, 960))
+        maxFramesDet = 600
+        frameCountDet = 0
+
+        # Initialize signals in thread to avoid blocking
+        thread_init = threading.Thread(name="initialization",target=initialize, args=())
+        thread_init.daemon = True
+        thread_init.start()
         
         # Load model
         model_path = "../Models/yolov8x.pt"
@@ -612,7 +622,7 @@ if __name__ == '__main__':
             # Create a combined image
             if len(frames) > 0:
                 # Arrange in grid 2x2
-                top_row = np.hstack(frames[:2]) if len(frames) >= 2 else frames[0]
+                top_row = np.hstack(frames[:2]) if len(frames) >= 2 else np.hstack([frames[0], np.zeros_like(frames[0])])
                 if len(frames) > 2:
                     bottom_row = np.hstack(frames[2:])
                     # Pad if odd number
@@ -620,11 +630,22 @@ if __name__ == '__main__':
                         bottom_row = np.hstack([frames[2], np.zeros_like(frames[0])])
                     combined = np.vstack([top_row, bottom_row])
                 else:
-                    combined = top_row
+                    combined = np.vstack([top_row, np.zeros_like(top_row)])
                 
+                # Resize to actual VideoWriter resolution if sizes differ slightly due to internal resizing
+                combined = cv2.resize(combined, (1280, 960))
+                
+                out_det.write(combined)
+                frameCountDet += 1
+                if frameCountDet >= maxFramesDet:
+                    print("Detection recording complete.")
+                    out_det.release()
+                    sys.exit()
+
                 if not args.headless:
                     cv2.imshow("Traffic Control", combined)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
+                    out_det.release()
                     break
             
             # Run signal logic
@@ -638,7 +659,7 @@ if __name__ == '__main__':
 
     else:
         print("Starting Simulation Mode")
-        Main()
+        Main(args)
 
 
   
