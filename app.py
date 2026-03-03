@@ -304,7 +304,7 @@ def signal_sample():
     job_id = str(uuid.uuid4())
     JOBS[job_id] = {'status': 'queued', 'type': 'signal_sample'}
     
-    output_filename = f"simulation_{job_id}.mp4"
+    output_filename = f"simulation_{job_id}.webm"
     output_path = os.path.join(SIGNAL_RESULTS_DIR, output_filename)
     
     script_path = os.path.join(SIGNAL_DIR, 'signalcontrol.py')
@@ -344,7 +344,7 @@ def signal_upload():
     if len(video_paths) < 2:
         return jsonify({"error": "Please upload at least 2 videos for detection mode"}), 400
 
-    output_filename = f"detection_{job_id}.mp4"
+    output_filename = f"detection_{job_id}.webm"
     output_path = os.path.join(SIGNAL_RESULTS_DIR, output_filename)
     
     script_path = os.path.join(SIGNAL_DIR, 'signalcontrol.py')

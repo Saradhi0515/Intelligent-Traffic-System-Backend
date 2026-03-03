@@ -471,8 +471,8 @@ def Main(args):
     thread3.start()
 
     # Video Recording Setup
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    output_file = getattr(args, 'output', 'simulation_output.mp4')
+    fourcc = cv2.VideoWriter_fourcc(*'vp80')
+    output_file = getattr(args, 'output', 'simulation_output.webm')
     out = cv2.VideoWriter(output_file, fourcc, 20.0, (screenWidth, screenHeight))
     frameCount = 0
     maxFrames = 600 # Record for about 30 seconds (20 fps * 30)
@@ -535,7 +535,7 @@ def Main(args):
         
         frameCount += 1
         if frameCount >= maxFrames:
-            print("Recording complete. Saved to simulation_output.mp4")
+            print(f"Recording complete. Saved to {output_file}")
             out.release()
             sys.exit()
 
@@ -553,7 +553,7 @@ if __name__ == '__main__':
         print("Starting Detection Mode with", len(args.videos), "videos")
         
         # Initialize video writer for detection mode
-        fourcc_det = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc_det = cv2.VideoWriter_fourcc(*'vp80')
         os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
         out_det = cv2.VideoWriter(args.output, fourcc_det, 20.0, (1280, 960))
         maxFramesDet = 600
