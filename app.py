@@ -27,8 +27,12 @@ os.makedirs(VIDEOS_DIR, exist_ok=True)
 ACCIDENT_DIR = os.path.join(BASE_DIR, 'Data', 'Accident-Detection')
 os.makedirs(ACCIDENT_DIR, exist_ok=True)
 ACCIDENT_RESULTS_DIR = os.path.join(ACCIDENT_DIR, 'Results')
-ACCIDENT_RESULTS_DIR = os.path.join(ACCIDENT_DIR, 'Results')
 os.makedirs(ACCIDENT_RESULTS_DIR, exist_ok=True)
+
+EMERGENCY_DIR = os.path.join(BASE_DIR, 'Data', 'Emergency')
+os.makedirs(EMERGENCY_DIR, exist_ok=True)
+EMERGENCY_RESULTS_DIR = os.path.join(EMERGENCY_DIR, 'Results')
+os.makedirs(EMERGENCY_RESULTS_DIR, exist_ok=True)
 
 SIGNAL_DIR = os.path.join(BASE_DIR, 'Signal-Control')
 SIGNAL_RESULTS_DIR = os.path.join(SIGNAL_DIR, 'Results') # Or just use SIGNAL_DIR if simpler
@@ -98,6 +102,30 @@ def run_accident_pipeline(job_id, cmd, output_video_path, output_filename):
 
         JOBS[job_id]['status'] = 'completed'
         JOBS[job_id]['result_url'] = f"/media/accident/Results/{output_filename}"
+
+    except Exception as e:
+        JOBS[job_id]['status'] = 'failed'
+        JOBS[job_id]['error'] = str(e)
+
+def run_emergency_pipeline(job_id, cmd, output_video_path, output_filename):
+    try:
+        JOBS[job_id]['status'] = 'processing'
+        print(f"Running emergency command: {' '.join(cmd)}")
+        
+        res = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        
+        if res.returncode != 0 and not os.path.isfile(output_video_path):
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = f"Emergency detection failed: {res.stderr}"
+            return
+
+        if not os.path.isfile(output_video_path):
+            JOBS[job_id]['status'] = 'failed'
+            JOBS[job_id]['error'] = "Output video not generated"
+            return
+
+        JOBS[job_id]['status'] = 'completed'
+        JOBS[job_id]['result_url'] = f"/media/emergency/Results/{output_filename}"
 
     except Exception as e:
         JOBS[job_id]['status'] = 'failed'
@@ -271,6 +299,57 @@ def upload_accident():
 
     return jsonify({"error": "Only videos are supported for accident detection currently"}), 400
 
+@app.route("/api/emergency/upload", methods=["POST"])
+@app.route("/emergency/", methods=["POST"])
+def upload_emergency():
+    if "file" not in request.files:
+        return jsonify({"error": "No file field"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    filename = secure_filename(f.filename)
+    base, ext = os.path.splitext(filename)
+    ext_no_dot = ext[1:].lower() if ext.startswith('.') else ext.lower()
+
+    if ext_no_dot in ALLOWED_VIDEO_EXTS:
+        input_video_path = os.path.join(EMERGENCY_DIR, filename)
+        f.save(input_video_path)
+
+        output_filename = f"processed_{base}.webm"
+        output_video_path = os.path.join(EMERGENCY_RESULTS_DIR, output_filename)
+
+        job_id = str(uuid.uuid4())
+        JOBS[job_id] = {'status': 'queued', 'type': 'emergency'}
+
+        emergency_script = os.path.join(BASE_DIR, 'Emergency-Vehicle', 'emergency_detector.py')
+        cmd = [
+            sys.executable, 
+            emergency_script, 
+            '--video', input_video_path,
+            '--output', output_video_path,
+            '--conf', '0.5' 
+        ]
+        
+        thread = threading.Thread(target=run_emergency_pipeline, args=(job_id, cmd, output_video_path, output_filename))
+        thread.start()
+
+        # The frontend code for emergency currently expects to poll or expects the processed URL back?
+        # Let's check: The frontend code actually waits for the URL directly in the response! 
+        # But wait, it uses polling or just waits?
+        # Actually, if we look at EmergencyVehicle.jsx, it doesn't poll. It just awaits the fetch.
+        # Let's wait for the job here synchronously so the frontend works as-is without polling.
+        thread.join()
+        
+        job = JOBS[job_id]
+        if job['status'] == 'completed':
+            return jsonify({"processedUrl": job['result_url']}), 200
+        else:
+            return jsonify({"error": job.get('error', 'Processing failed')}), 500
+
+    return jsonify({"error": "Only videos are supported for emergency detection currently"}), 400
+
 def run_signal_pipeline(job_id, cmd, output_path, output_filename):
     try:
         JOBS[job_id]['status'] = 'processing'
@@ -382,6 +461,14 @@ def serve_anpr_atcc(filename):
 @app.route("/media/accident/<path:filename>", methods=["GET", "OPTIONS"])
 def serve_accident(filename):
     response = send_from_directory(ACCIDENT_DIR, filename)
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "ngrok-skip-browser-warning, Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    return response
+
+@app.route("/media/emergency/<path:filename>", methods=["GET", "OPTIONS"])
+def serve_emergency(filename):
+    response = send_from_directory(EMERGENCY_DIR, filename)
     response.headers.add("Access-Control-Allow-Origin", "*")
     response.headers.add("Access-Control-Allow-Headers", "ngrok-skip-browser-warning, Content-Type, Authorization")
     response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")

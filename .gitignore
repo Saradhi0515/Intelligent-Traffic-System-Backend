@@ -38,7 +38,6 @@ env/
 
 # Directories
 /Models/Model_Training
-/Emergency-Vehicle
 /Data/ANPR-ATCC/Results/
 /Data/Accident-Detection/Results/
 /Signal-Control/Results/
