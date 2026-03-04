@@ -335,18 +335,7 @@ def upload_emergency():
         thread = threading.Thread(target=run_emergency_pipeline, args=(job_id, cmd, output_video_path, output_filename))
         thread.start()
 
-        # The frontend code for emergency currently expects to poll or expects the processed URL back?
-        # Let's check: The frontend code actually waits for the URL directly in the response! 
-        # But wait, it uses polling or just waits?
-        # Actually, if we look at EmergencyVehicle.jsx, it doesn't poll. It just awaits the fetch.
-        # Let's wait for the job here synchronously so the frontend works as-is without polling.
-        thread.join()
-        
-        job = JOBS[job_id]
-        if job['status'] == 'completed':
-            return jsonify({"processedUrl": job['result_url']}), 200
-        else:
-            return jsonify({"error": job.get('error', 'Processing failed')}), 500
+        return jsonify({"jobId": job_id, "status": "queued"}), 202
 
     return jsonify({"error": "Only videos are supported for emergency detection currently"}), 400
 
