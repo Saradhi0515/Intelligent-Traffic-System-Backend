@@ -6,7 +6,7 @@ from ultralytics import YOLO
 def detect_emergency(video_path, model_path=None, output_path=None, conf_threshold=0.5):
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     default_model_path = os.path.join(base_dir, 'Models', 'emergency_detector.pt')
-    fallback_model_path = os.path.join(base_dir, 'Models', 'yolov8x.pt')
+    fallback_model_path = "yolov8n.pt"
 
     if model_path is None:
         if os.path.exists(default_model_path):
