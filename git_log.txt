@@ -1,0 +1,11 @@
+﻿commit 0ccd74a16a04d7aa946c04a425eb0388c0d4d604
+Author: Saradhi0515 <pardhasaradhi.0515@gmail.com>
+Date:   Thu Mar 5 11:17:33 2026 +0530
+
+    Emergency Vehicle Detection Model Completed
+
+commit fbcd46fc5c010743acad22815a891a3a687e3eb9
+Author: Saradhi0515 <pardhasaradhi.0515@gmail.com>
+Date:   Thu Mar 5 01:33:02 2026 +0530
+
+    Switch to yolov8n to fix OOM crash and timeout in HuggingFace space tracking

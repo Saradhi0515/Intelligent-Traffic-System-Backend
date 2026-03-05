@@ -1,0 +1,5 @@
+﻿ D status.txt
+?? git_log.txt
+?? remotes.txt
+?? remotes2.txt
+?? status2.txt

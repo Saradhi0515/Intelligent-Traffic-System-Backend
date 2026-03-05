@@ -1,0 +1,4 @@
+﻿origin	https://github.com/Saradhi0515/Intelligent-Traffic-System-Backend.git (fetch)
+origin	https://github.com/Saradhi0515/Intelligent-Traffic-System-Backend.git (push)
+space	https://huggingface.co/spaces/Saradhi0515/intelligent-traffic-system-backend (fetch)
+space	https://huggingface.co/spaces/Saradhi0515/intelligent-traffic-system-backend (push)
